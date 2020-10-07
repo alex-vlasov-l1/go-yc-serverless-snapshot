@@ -1,36 +1,54 @@
-This is English translation of https://github.com/nikolaymatrosov/yc-serverless-snapshot
+This is English translation of https://github.com/nikolaymatrosov/go-yc-serverless-snapshot Readme.md as well as code commentary. Aim is to make it easier for international Yandex.Cloud clients to start using this Lambda.
 
 ### Basic principles
 
 By default in user cloud there is a limit on maximum amount of concurrent operations, which equals 15.
 
-Which means, that if we want to do more than 15 disk snapshots at a time, we can't just call in function which will invoke snapshot creation for all of the disks in folder or cloud.
+Which means, that if we want to do more than 15 disk snapshots at the same time, we can't just call in one function which will invoke snapshot creation for all of the disks in folder or cloud.
 
-So keep things simple without designing "retry" conditions and waiting to snapshot to finish, we will use Yandex Message Queue
+To  keep things simple without designing custom "retry" conditions or waiting to snapshot to finish, we will use Yandex Message Queue for task coordination between functions.
 
-SO, the first function, which will be triggered by cron scheduler, will be pushing the messages into the Yandex Message Queue, the messages will contain tasks for the second  function.
+#### The first function (spawn-snapshot-tasks); 
+will be  triggered by cron scheduler, will discover the list of disks which will be scheduled for backup and then  will push messages into the Yandex Message Queue, one per each disk that have to be backed up.
 
-Second function will use Yandex Message Queue messages as a trigger, to do actual useful work of creating snapshots.
+#### Second function (snapshot-discs.go)
+will use Yandex Message Queue messages as a trigger, will read the message with disk_id will attempt to create a snapshot for this disk.
 
-In case Compute API (the one responsible for VMs, disks and snapshots) gives us an error, for example if we exceed the quota on total number of snapshots or concurrent operations, function will throw and exception.
+In case Cloud API (the one responsible for VMs, disks and snapshots) returns an error, for example if we exceed the quota on total number of snapshots or concurrent operations, function will throw a exception.
 
 The message will not be removed from the Queue, and after some time, will once again become available to be received. This way we provide
-'retry' functionality in case something is preventing us from doing snapshots, and we want to automatically recover when conditions clear.
+'retry' functionality in case something is preventing us from doing snapshots, and we want to automatically recover when those conditions clear.
 
 <img src="assets/create.png" width="474px" alt="create snapshots diagram">
 
-Another task is to cleanup unneeded or expired snapshots. When creating shapshot, we automatically label it with  `expiration_ts` containing unix-timestamp of when this snapshot is to be deleted.
+#### Third function
+does cleaning up unneeded or expired snapshots. When creating shapshot a , we automatically label it with  `expiration_ts` label containing unix-timestamp of when this snapshot expires and is no longer needed.
 
-Using cron scheduler triggers, this function will delete all expired snapshots.This operation does not count towards quotas (since you are obviously decreasing the amount of snapshots)
+Using cron scheduler triggers, this function will delete all expired snapshots whole with expiration timestamp below current date and time. This operation does not count towards quotas (since we are obviously decreasing the amount of snapshots)
 
 <img src="assets/cleanup.png" width="232px" alt="cleanup snapshots diagram">
 
-### Pre-deployment and config
+### Pre-deployment and OS setup
 #### MacOs (Linux)
 
-We suppose that you've already installed and initialized [yc](https://cloud.yandex.com/docs/cli/quickstart) and also [s3cmd](https://cloud.yandex.com/docs/storage/tools/s3cmd). 
+To deploy this solution you have to have YC-CLI installed and initialized [yc](https://cloud.yandex.com/docs/cli/quickstart) 
+As well as S3-CMD tool to interact with AWS-API sercvices [s3cmd](https://cloud.yandex.com/docs/storage/tools/s3cmd). 
 
 We will need both to automate our function deployment.
+
+#### Windows
+
+For windows you also need to have both tools installed as well as  mingw (git bash).
+
+To install it first do:
+
+1. Download and insstall [GnuZip](http://gnuwin32.sourceforge.net/packages/zip.htm)
+
+2. Add `GnuZip` to PATH.
+
+You will need administrator account to do that.
+
+### Setting up necessary resources and configuring solution
 
 To deploy functions in your cloud you need to do the following:
 
@@ -101,7 +119,7 @@ yc iam access-key create --service-account-name sa-snapshot --format=json
 
 Where `Key_id` would be `AWS_ACCESS_KEY_ID`, and `secret` would be `AWS_SECRET_ACCESS_KEY`
        
-   1.3 Fill in `DEPLOY_BUCKET=` name of s3 Bucket where to publish Function code and binaries. Create private  bucket in the same folder and write its name.
+   1.3 Fill in `DEPLOY_BUCKET=` name of s3 Bucket where to publish Function code and binaries. Create private  bucket in the same folder and write its name. (https://cloud.yandex.com/docs/storage/operations/buckets/create)
     
    1.4 Choose either `MODE=all` or `MODE=only-marked` - in mode all snapshots will be done for every disk in folder, in only-marked modeo only for disks with              label `snapshot` 
    <table ><tbody><tr></tr><tr><td><details><summary><sub><b>Show the full output</b></sub><h6>Use YC-CLI to assign label to disk</h6> 
@@ -145,7 +163,7 @@ Where `Key_id` would be `AWS_ACCESS_KEY_ID`, and `secret` would be `AWS_SECRET_A
     
    1.6 Fill in`TTL=` in Snapshot Time To Live in seconds. 1 week = 60*60*24*7 = 604800 will be TTL=604800
     
-   1.7 Fill in `CRATE_CRON=` schedule for snapshot creation and `DELETE_CRON=` schedule for  removing expired snapshots. Both should be filled in in AWS-format            https://cloud.yandex.com/docs/functions/concepts/trigger/timer
+   1.7 Fill in `CREATE_CRON=` schedule for snapshot creation and `DELETE_CRON=` schedule for  removing expired snapshots. Both should be filled in in AWS-format            https://cloud.yandex.com/docs/functions/concepts/trigger/timer
     
    1.8 QUEUE_URL и QUEUE_ARN will be autopopulated, leave them empty.
 
@@ -155,14 +173,4 @@ Where `Key_id` would be `AWS_ACCESS_KEY_ID`, and `secret` would be `AWS_SECRET_A
 
 3. `./script/deploy.sh` Launch this script next to upload the function code to bucket, and activate them
 
-#### Windows
 
-You can use mingw (git bash).
-
-To install it first do:
-
-1. Download and insstall [GnuZip](http://gnuwin32.sourceforge.net/packages/zip.htm)
-
-2. Add `GnuZip` to PATH.
-
-You will need administrator account to do that.
