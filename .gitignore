@@ -18,3 +18,4 @@
 .env
 build
 build.zip
+.DS_Store

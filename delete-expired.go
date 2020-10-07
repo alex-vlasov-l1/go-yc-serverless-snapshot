@@ -14,27 +14,27 @@ import (
 
 func DeleteHandler(ctx context.Context) (*Response, error) {
 	folderId := os.Getenv("FOLDER_ID")
-	// Авторизация в SDK при помощи сервисного аккаунта
+	// Authorization in SDK using ServiceAccount
 	sdk, err := ycsdk.Build(ctx, ycsdk.Config{
-		// Вызов InstanceServiceAccount автоматически запрашивает IAM-токен и формирует
-		// при помощи него данные для авторизации в SDK
+		// Calling InstanceServiceAccount automatically requests IAM-token and with it constructs
+		// necessary SDK credentials
 		Credentials: ycsdk.InstanceServiceAccount(),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Получаем итератор снепшотов при помощи YC SDK
+	// Create snapshot iterator wth YC SDK
 	snapshotIter := sdk.Compute().Snapshot().SnapshotIterator(ctx, folderId)
 	deletedIds := []string{}
-	// Итрерируемся по нему
+	// We iterate over it
 	for snapshotIter.Next() {
 		snapshot := snapshotIter.Value()
 		labels := snapshot.Labels
 		if labels == nil {
 			continue
 		}
-		// Проверяем есть ли у снепшота лейбл `expiration_ts`.
+		// We check whether snapshot has label `expiration_ts`.
 		expirationTsVal, ok := labels["expiration_ts"]
 		if !ok {
 			continue
@@ -45,7 +45,7 @@ func DeleteHandler(ctx context.Context) (*Response, error) {
 			continue
 		}
 
-		// Если он есть и время сейчас больше, чем то что записано в лейбл, то удаляем снепшот.
+		// If that label is present, and the date&time in that label are before current date, we consider that snapshot expired and remove it
 		if int(now.Unix()) > expirationTs {
 			op, err := sdk.WrapOperation(sdk.Compute().Snapshot().Delete(ctx, &compute.DeleteSnapshotRequest{
 				SnapshotId: snapshot.Id,

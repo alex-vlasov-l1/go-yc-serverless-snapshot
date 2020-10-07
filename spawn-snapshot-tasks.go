@@ -34,8 +34,8 @@ func SpawnHandler(ctx context.Context) (*Response, error) {
 	onlyMarked := mode == "only-marked"
 
 	sdk, err := ycsdk.Build(ctx, ycsdk.Config{
-		// Вызов InstanceServiceAccount автоматически запрашивает IAM-токен и формирует
-		// при помощи него данные для авторизации в SDK
+		// Calling InstanceServiceAccount automatically requests IAM-token and with it constructs
+		// necessary SDK credentials
 		Credentials: ycsdk.InstanceServiceAccount(),
 	})
 	if err != nil {
@@ -51,10 +51,10 @@ func SpawnHandler(ctx context.Context) (*Response, error) {
 	}))
 
 	svc := sqs.New(sess)
-	// Получаем итератор
+	// We get the iterator
 	discIter := sdk.Compute().Disk().DiskIterator(ctx, folderId)
 	var diskIds []string
-	// И итерируемся по всем дискам в фолдере
+	// And iterate over the list of all disks in Folder
 	for discIter.Next() {
 		d := discIter.Value()
 		labels := d.GetLabels()
@@ -62,8 +62,9 @@ func SpawnHandler(ctx context.Context) (*Response, error) {
 		if labels != nil {
 			_, ok = labels["snapshot"]
 		}
-		// Если в переменной `MODE` указано `only-marked`, то снепшоты будут создаваться только для дисков,
-		// у которых проставлен лейбл `snapshot`. Иначе снепшотиться будут все диски.
+		// If variable `MODE` is set to `only-marked`,
+		// then snapshots will only be created for disks with label 'snapshot' Otherwise all  disks will be backed up with snapshot
+
 		if onlyMarked && !ok {
 			continue
 		}
@@ -72,7 +73,7 @@ func SpawnHandler(ctx context.Context) (*Response, error) {
 			FolderId: folderId,
 			DiskId:   d.Id,
 		}, &queueUrl)
-		// Отправляем в Yandex Message Queue сообщение с праметрами какой диск нужно снепшотить
+		// We send the message to Yandex Message Queuue with parameters of disk that needs to be shapshotted
 		_, err = svc.SendMessage(params)
 		if err != nil {
 			fmt.Println("Error", err)

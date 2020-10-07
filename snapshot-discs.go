@@ -14,26 +14,26 @@ import (
 )
 
 func SnapshotHandler(ctx context.Context, event MessageQueueEvent) (*Response, error) {
-	// Авторизация в SDK при помощи сервисного аккаунта
+	// Authorization in SDK using ServiceAccount
 	sdk, err := ycsdk.Build(ctx, ycsdk.Config{
-		// Вызов InstanceServiceAccount автоматически запрашивает IAM-токен и формирует
-		// при помощи него данные для авторизации в SDK
+		// Calling InstanceServiceAccount automatically requests IAM-token and with it constructs
+		// necessary SDK credentials
 		Credentials: ycsdk.InstanceServiceAccount(),
 	})
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
-	// Получаем значение периода жизни снепшота из переменной окружения
+	// We get the value of snaphots Time-to-live (TTL) from the environmental variable
 	ttl, err := strconv.Atoi(os.Getenv("TTL"))
 	if err != nil {
 		return nil, err
 	}
 
-	// Вычисляем таймстемп, после которого можно будет удалить снепшот.
+	// We calculate the exact timestamp, after which we can delete the snapshot.
 	expirationTs := strconv.Itoa(int(now.Unix()) + ttl)
 
-	// Парсим json с данными в каком фолдере какой диск нужно снепшотить
+	// We parse json with data containing lists of folders and disks in those folders that we need to backup
 	body := event.Messages[0].Details.Message.Body
 	createSnapshotParams := &CreateSnapshotParams{}
 	err = json.Unmarshal([]byte(body), createSnapshotParams)
@@ -41,8 +41,8 @@ func SnapshotHandler(ctx context.Context, event MessageQueueEvent) (*Response, e
 		return nil, err
 	}
 
-	// При помощи YC SDK создаем снепшот, указывая в лейблах время его жизни.
-	// Он не будет удален автоматически Облаком. Этим будет заниматься функция описанная в ./delete-expired.go
+	// .With YC SDK we create a snapshot, and label it with it's Time-to-live
+	// This snapshot will not be deleted autommatically by thhe cloud itself. We will use ./delete-expired.go functions for cleaning up expired snapshots.
 	snapshotOp, err := sdk.WrapOperation(sdk.Compute().Snapshot().Create(ctx, &compute.CreateSnapshotRequest{
 		FolderId: createSnapshotParams.FolderId,
 		DiskId:   createSnapshotParams.DiskId,
@@ -53,8 +53,8 @@ func SnapshotHandler(ctx context.Context, event MessageQueueEvent) (*Response, e
 	if err != nil {
 		return nil, err
 	}
-	// Если снепшот по каким-то причинам создать не удалось, сообщение вернется в очередь. После этого триггер
-	// снова возьмет его из очереди, вызовет эту функцию снова и будет сделана еще одна попытка его создать.
+	// If for some reason snapshot operation failed, message will come back to queue.
+	// After that trigger will once again take the message from the queue, call in that functiion to retry the snapshot creation one ore time.
 	if opErr := snapshotOp.Error(); opErr != nil {
 		return &Response{
 			StatusCode: 200,
