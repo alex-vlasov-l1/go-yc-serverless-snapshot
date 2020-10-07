@@ -1,4 +1,4 @@
-This is rewritten in "Go" code from https://github.com/nikolaymatrosov/yc-serverless-snapshot
+This is English translation of nikolaymatrosov/go-yc-serverless-snapshot
 ### Basic principles
 By default in user cloud there is a limit on maximum amount of concurrent operations, which equals 15.
 Which means, that if we want to do more than 15 disk snapshots at a time, we can't just call in function which will invoke snapshot creation for all of the disks in folder or cloud.
