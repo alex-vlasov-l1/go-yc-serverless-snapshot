@@ -41,13 +41,14 @@ To deploy functions in your cloud you need to do the following:
     1.2 Fill in`AWS_ACCESS_KEY_ID=` and `AWS_SECRET_ACCESS_KEY=` 
         To get those keys create service account with role "editor" in the folder where you will be deploying your function
         
-<details><summary>YC comand and output</summary>
+<table ><tbody><tr></tr><tr><td><details><summary><sub><b>Expand command output</b></sub><h6>Use YC CLI to create service account and give him "editor" role</h6>
 
 ``` 
 yc iam service-account create --name sa-snapshot 
 --description "service account for snapshot automation" --format=json
+yc resource-manager folder add-access-binding --service-account-name=sa-snapshot --name=av-demo --role=editor
 ```
-           
+
 ```json
 { 
 "id": "aje82e80o9roadhod6bl",
@@ -57,15 +58,31 @@ yc iam service-account create --name sa-snapshot
 "description": "service account for snapshot automation" 
 }
 ```
-</details>        
+</summary><hr>
+
+<h6>Let's verify the output and correct role asignment</h6>
 
 
-<details><summary>Then create the keys:</summary>
+```
+SA_SNAPSHOT=$(yc iam service-account get --name=sa-snapshot --format=json | jq -r '.id')
+yc resource-manager folder list-access-bindings --name=av-demo --format=json |  jq --arg SA_SNAPSHOT "$SA_SNAPSHOT" -r '.[]|select(.subject.id==$SA_SNAPSHOT) | "sa-snapshot role and id are:   "    + "\(.role_id)/\(.subject.id)"'
 
+sa-snapshot role and id are:   editor/aje82e80o9roadhod6bl
+```
+</details></td></tr></tbody>
+</table>      
+  
+
+
+<table ><tbody><tr></tr><tr><td><details><summary><sub><b>Show the resulting keypair</b></sub><h6>Lets create static (AWS) keys</h6>
+    
 ```
 yc iam access-key create --service-account-name sa-snapshot --format=json
 ```
-          
+</summary><hr>
+
+<h6>Write down key_id and secret values </h6>
+
 ```json
 { 
 "access_key": 
@@ -75,20 +92,26 @@ yc iam access-key create --service-account-name sa-snapshot --format=json
                "created_at": "2020-10-07T01:20:11Z",
                "key_id": "qPKMRDUcwxPWHQ1D7av4 
              },
- "secret": "somesecrett" 
+"secret": "somesecrett" 
 } 
 ```
-</details> 
+
+</details></td></tr></tbody>
+</table>   
 
 Where `Key_id` would be `AWS_ACCESS_KEY_ID`, and `secret` would be `AWS_SECRET_ACCESS_KEY`
        
    1.3 Fill in `DEPLOY_BUCKET=` name of s3 Bucket where to publish Function code and binaries. Create private  bucket in the same folder and write its name.
     
    1.4 Choose either `MODE=all` or `MODE=only-marked` - in mode all snapshots will be done for every disk in folder, in only-marked modeo only for disks with              label `snapshot` 
-   <details><summary>To assign label to disk do the command::</summary> 
+   <table ><tbody><tr></tr><tr><td><details><summary><sub><b>Show the full output</b></sub><h6>Use YC-CLI to assign label to disk</h6> 
   
  `yc compute disk add-labels --name=init-test-disk --labels=snapshot=1`
-      
+ 
+  </summary><hr>
+
+<h6>Verify that label has applied on a disk  </h6>  
+
 ```json 
 {
   "id": "fhmhsdpqauu4vasm5tsl",
@@ -113,8 +136,11 @@ Where `Key_id` would be `AWS_ACCESS_KEY_ID`, and `secret` would be `AWS_SECRET_A
 
   }
 }
-```    
-</details> 
+```  
+
+</details></td></tr></tbody>
+</table>   
+
    1.5 Fill in`SERVICE_ACCOUNT_ID=` use id of SA that  you've created earlier
     
    1.6 Fill in`TTL=` in Snapshot Time To Live in seconds. 1 week = 60*60*24*7 = 604800 will be TTL=604800
